@@ -295,7 +295,7 @@ class Hono<
         ;(handler as any)[COMPOSED_HANDLER] = r.handler
       }
 
-      subApp.#addRoute(r.method, r.path, handler, r.basePath)
+      subApp.#addRoute(r.method, r.path, handler, r)
     })
     return this
   }
@@ -451,14 +451,15 @@ class Hono<
     return this
   }
 
-  #addRoute(method: string, path: string, handler: H, baseRoutePath?: string): void {
+  #addRoute(method: string, path: string, handler: H, baseRoute?: RouterRoute): void {
     method = method.toUpperCase()
     path = mergePath(this._basePath, path)
     const r: RouterRoute = {
-      basePath: mergePath(this._basePath, baseRoutePath ?? '/'),
+      basePath: mergePath(this._basePath, baseRoute?.basePath ?? '/'),
       path,
       method,
       handler,
+      depth: (baseRoute?.depth ?? -1) + 1,
     }
     this.router.add(method, path, [handler, r])
     this.routes.push(r)
@@ -484,6 +485,7 @@ class Hono<
     if (!handlers.length) {
       return fallback(c)
     }
+    handlers.sort((a, b) => b[0][1].depth! - a[0][1].depth!)
     c.finalized = false
 
     const handleError = (err: unknown): Response | Promise<Response> => {

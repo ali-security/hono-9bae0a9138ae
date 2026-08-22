@@ -499,6 +499,7 @@ describe('Routing', () => {
       expect(app.routes).toEqual([
         {
           basePath: '/:sub',
+          depth: 1,
           method: 'GET',
           path: '/:sub/posts/:id',
           handler: expect.any(Function),
@@ -517,6 +518,7 @@ describe('Routing', () => {
       expect(app.routes).toEqual([
         {
           basePath: '/:sub1/:sub2',
+          depth: 2,
           method: 'GET',
           path: '/:sub1/:sub2/posts/:id',
           handler: expect.any(Function),
@@ -533,6 +535,7 @@ describe('Routing', () => {
       expect(app.routes).toEqual([
         {
           basePath: '/api/book',
+          depth: 1,
           method: 'GET',
           path: '/api/book/:id',
           handler: expect.any(Function),
@@ -1959,6 +1962,58 @@ describe('Hono with `app.route`', () => {
   })
 
   describe('catch', () => {
+    it('Should run nested application middleware before parent middleware', async () => {
+      const app = new Hono()
+      const sub = new Hono()
+      const nested = new Hono()
+      const calls: string[] = []
+
+      app.catch(async (_c, next) => {
+        calls.push('app')
+        await next()
+      })
+      sub.catch(async (_c, next) => {
+        calls.push('sub')
+        await next()
+      })
+      nested.catch(async (c) => {
+        calls.push('nested')
+        return c.text(c.error!.message, 500)
+      })
+      nested.get('/error', () => {
+        throw new Error('Error')
+      })
+      sub.route('/', nested)
+      app.route('/', sub)
+
+      const res = await app.request('/error')
+      expect(await res.text()).toBe('Error')
+      expect(calls).toEqual(['nested'])
+    })
+
+    it('Should continue through parent application middleware', async () => {
+      const app = new Hono()
+      const sub = new Hono()
+      const calls: string[] = []
+
+      app.catch(async (c) => {
+        calls.push('app')
+        return c.text(c.error!.message, 500)
+      })
+      sub.catch(async (_c, next) => {
+        calls.push('sub')
+        await next()
+      })
+      sub.get('/error', () => {
+        throw new Error('Error')
+      })
+      app.route('/', sub)
+
+      const res = await app.request('/error')
+      expect(await res.text()).toBe('Error')
+      expect(calls).toEqual(['sub', 'app'])
+    })
+
     it('Should scope error middleware by path', async () => {
       const app = new Hono()
       const api = new Hono()
@@ -2285,6 +2340,18 @@ describe('Hono with `app.route`', () => {
   })
 
   describe('catchNotFound', () => {
+    it('Should run nested application middleware before parent middleware', async () => {
+      const app = new Hono()
+      const sub = new Hono()
+
+      app.catchNotFound(async (c) => c.text('App Not Found', 404))
+      sub.catchNotFound(async (c) => c.text('Sub Not Found', 404))
+      app.route('/', sub)
+
+      const res = await app.request('/missing')
+      expect(await res.text()).toBe('Sub Not Found')
+    })
+
     it('Should scope not-found middleware by path', async () => {
       const app = new Hono()
 
